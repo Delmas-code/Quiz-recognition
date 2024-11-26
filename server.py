@@ -101,11 +101,11 @@ async def perform_identification(username: str= Form(...), image: UploadFile = F
     else:
         raise HTTPException(status_code=400, detail="No face detected in the uploaded image.")
 
-
 @app.post('/store_snapshots/')
-async def setup_user(username: str = Form(...), image: UploadFile = File(...)):
+async def setup_user(username: str = Form(...), images: list[UploadFile] = File(...)):
     """
-    Register a new user by capturing their face and computing an embedding from an uploaded image.
+    Register a new user by capturing their face and computing a single embedding
+    from multiple uploaded images by averaging their embeddings.
     """
     print(f"Registering user: {username}")
 
@@ -114,40 +114,57 @@ async def setup_user(username: str = Form(...), image: UploadFile = File(...)):
     if not os.path.exists(user_folder):
         os.makedirs(user_folder)
 
-    # Save the uploaded image
-    img_data = await image.read()
-    np_img = np.frombuffer(img_data, np.uint8)
-    img = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
-    
-    if img is None:
-        raise HTTPException(status_code=400, detail="Error processing image.")
-    
     detector = MTCNN()
     embedder = FaceNet()  # Initialize FaceNet from keras-facenet
 
-    # Detect face in the image
-    faces = detector.detect_faces(img)
-    if not faces:
-        raise HTTPException(status_code=400, detail="No face detected in the image.")
+    # Initialize a list to store embeddings for aggregation
+    embeddings_list = []
 
-    # Get the largest face
-    faces.sort(key=lambda x: x['box'][2] * x['box'][3], reverse=True)
-    x, y, w, h = faces[0]['box']
-    face = img[y:y + h, x:x + w]
+    # Iterate over each uploaded image
+    for image in images:
+        print(f"Processing image: {image.filename}")
 
-    # Preprocess the face
-    face_resized = cv2.resize(face, (160, 160))
-    face_array = np.expand_dims(face_resized, axis=0)
+        # Save the uploaded image
+        img_data = await image.read()
+        np_img = np.frombuffer(img_data, np.uint8)
+        img = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
+        
+        if img is None:
+            raise HTTPException(status_code=400, detail="Error processing image.")
+        
+        # Detect face in the image
+        faces = detector.detect_faces(img)
+        if not faces:
+            raise HTTPException(status_code=400, detail="No face detected in the image.")
 
-    # Compute embedding
-    embedding = embedder.embeddings(face_array)[0]
-    normalized_embedding = embedding / np.linalg.norm(embedding)
+        # Get the largest face
+        faces.sort(key=lambda x: x['box'][2] * x['box'][3], reverse=True)
+        x, y, w, h = faces[0]['box']
+        face = img[y:y + h, x:x + w]
 
-    # Save the embedding
-    np.save(os.path.join(user_folder, "embedding.npy"), normalized_embedding)
-    print(f"User {username} registered successfully.")
+        # Preprocess the face
+        face_resized = cv2.resize(face, (160, 160))
+        face_array = np.expand_dims(face_resized, axis=0)
+
+        # Compute embedding
+        embedding = embedder.embeddings(face_array)[0]
+        normalized_embedding = embedding / np.linalg.norm(embedding)
+
+        # Append the embedding to the list
+        embeddings_list.append(normalized_embedding)
+
+    # Average the embeddings to get a single representation
+    if embeddings_list:
+        final_embedding = np.mean(embeddings_list, axis=0)
+    else:
+        raise HTTPException(status_code=400, detail="No valid faces found in the images.")
+
+    # Save the final aggregated embedding
+    np.save(os.path.join(user_folder, "embedding.npy"), final_embedding)
+    print(f"User {username} registered successfully with an aggregated embedding.")
     
-    return {"success": True, "message": "Snapshot saved successfully."}
+    return {"success": True, "message": "Snapshots saved successfully."}
+
 
 """
     Fetch all usernames.
