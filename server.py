@@ -31,6 +31,7 @@ connected_clients: Dict[str, WebSocket] = {}
 unknown_user_count = defaultdict(int)
 unknown_user_threshold = defaultdict(int)
 stop_flags = defaultdict(bool)  # Default value for each user is False
+embeddings = {}
 
 
 # Directory to store user data
@@ -51,7 +52,7 @@ async def perform_identification(username: str= Form(...), image: UploadFile = F
     embedder = FaceNet()
 
     # Load all user embeddings
-    embeddings = {}
+    # embeddings = {}
     for user_name in os.listdir("user_data"):
         user_folder = os.path.join("user_data", user_name)
         embedding_path = os.path.join(user_folder, "embedding.npy")
@@ -84,7 +85,7 @@ async def perform_identification(username: str= Form(...), image: UploadFile = F
 
         # Compare with stored embeddings
         similarities = {
-            user: np.linalg.norm(normalized_input - stored_emb)
+            user: float(np.linalg.norm(normalized_input - stored_emb))
             for user, stored_emb in embeddings.items()
         }
 
@@ -95,10 +96,13 @@ async def perform_identification(username: str= Form(...), image: UploadFile = F
         # Threshold for identification (tune this value)
         threshold = 0.8
         if (confidence < threshold) and identified_user ==  username:
+            print(f"Identified: {identified_user}\nConfidence: {confidence}, Identified: {True}")
             return {"message": f"Identified: {identified_user}", "confidence": confidence, "identified": True}
         else:
+            print(f"Unknown user\nConfidence: {confidence}, Identified: {False}")
             return {"message": "Unknown user", "confidence": confidence, "identified": False}
     else:
+        print(f"[{username}]: No face detected in the uploaded image for this user.")
         raise HTTPException(status_code=400, detail="No face detected in the uploaded image.")
 
 @app.post('/store_snapshots/')
