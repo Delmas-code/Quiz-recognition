@@ -138,6 +138,7 @@ async def setup_user(username: str = Form(...), images: list[UploadFile] = File(
             undetected_face[username] +=1
             if undetected_face[username] > 3:
                 raise HTTPException(status_code=400, detail="Error processing image.")
+            return
         
         # Detect face in the image
         faces = detector.detect_faces(img)
@@ -152,6 +153,7 @@ async def setup_user(username: str = Form(...), images: list[UploadFile] = File(
                         "image_info": f"Size: {img.size}, Format: {img.format}",
                     }
                 )
+            return
 
         # Get the largest face
         faces.sort(key=lambda x: x['box'][2] * x['box'][3], reverse=True)
