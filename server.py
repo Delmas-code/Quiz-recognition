@@ -30,6 +30,7 @@ connected_clients: Dict[str, WebSocket] = {}
 # Global variables to track unknown user counts
 unknown_user_count = defaultdict(int)
 unknown_user_threshold = defaultdict(int)
+undetected_face = defaultdict(int)
 stop_flags = defaultdict(bool)  # Default value for each user is False
 embeddings = {}
 
@@ -134,12 +135,23 @@ async def setup_user(username: str = Form(...), images: list[UploadFile] = File(
         img = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
         
         if img is None:
-            raise HTTPException(status_code=400, detail="Error processing image.")
+            undetected_face[username] +=1
+            if undetected_face[username] > 3:
+                raise HTTPException(status_code=400, detail="Error processing image.")
         
         # Detect face in the image
         faces = detector.detect_faces(img)
         if not faces:
-            raise HTTPException(status_code=400, detail="No face detected in the image.")
+            print(img)
+            undetected_face[username] += 1
+            if undetected_face[username] > 3:
+                raise HTTPException(
+                    status_code=400, 
+                    detail={
+                        "error": "No face detected in the image.",
+                        "image_info": f"Size: {img.size}, Format: {img.format}",
+                    }
+                )
 
         # Get the largest face
         faces.sort(key=lambda x: x['box'][2] * x['box'][3], reverse=True)
